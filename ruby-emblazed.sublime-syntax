@@ -39,18 +39,17 @@ contexts:
     - include: symbols
     - include: arrays
     - include: hashes
-    - include: lambdas
-    - include: conditionals
-    - include: loops
+    # - include: lambdas
+    # - include: conditionals
+    # - include: loops
     # - include: methods
     # - include: classes
-    - include: procs
-    - include: blocks
-    - include: keywords
-    - include: operators
-    - include: illegals
-    - include: variables
-    - include: methods
+    # - include: procs
+    # - include: blocks
+    # - include: keywords
+    # - include: operators
+    # - include: illegals
+    # - include: variables
   # TODO: only include things that won't cause errors
   # (i don't think including main will cause erros but who knows)
   expressions:
@@ -264,8 +263,8 @@ contexts:
 
 ###[ HASHES ]##################################################################
   # currently only checks for { key: val } syntax and quoted variants
-  # recognizes any {} block as hash because regular blocks aren't scoped yet
-  # sequence of regex: find key -> find : -> find value -> find , or } -> repeat if ,
+  # sequence of regex:
+  # find key -> find ":" -> find val -> find "," or "}" -> repeat if found ","
 
   hashes:
     - match: \{
