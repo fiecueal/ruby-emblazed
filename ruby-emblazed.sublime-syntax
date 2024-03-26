@@ -1,0 +1,530 @@
+%YAML 1.2
+---
+# probably will not implement everything that ruby syntax has to offer,
+# only the ones i find relevant for use with DragonRuby
+# https://docs.ruby-lang.org/en/master/syntax_rdoc.html
+# TODO
+#   yardoc(maybe)
+#   ranges
+#   regexp(maybe)
+#   proc literals
+#   percent literals(maybe)
+#   one-liner ifs
+#   while loops
+#   one-liner whiles
+#   break/next/redo keyword search
+#   methods/modules/classes
+#   procs
+#   code blocks (do-end, {})
+#   operators
+#   syntax errors
+#   after-expression illegals
+#   hash/array splats
+#   ternary ops
+
+name: Ruby (Emblazed)
+file_extensions: rb
+scope: source.ruby
+
+variables:
+  decs: '\d+(?:_\d+)*'
+  vars: '[a-zA-Z_]\w*'
+
+contexts:
+  main:
+    - include: comments
+    - include: bools-and-nil
+    - include: decimals
+    - include: strings
+    - include: symbols
+    - include: arrays
+    - include: hashes
+    - include: lambdas
+    - include: conditionals
+    - include: loops
+    # - include: methods
+    # - include: classes
+    - include: procs
+    - include: blocks
+    - include: keywords
+    - include: operators
+    - include: illegals
+    - include: variables
+    - include: methods
+  # TODO: only include things that won't cause errors
+  # (i don't think including main will cause erros but who knows)
+  expressions:
+    - include: main
+
+###[ METHODS ]#################################################################
+
+  methods:
+    - include: block-methods
+    - include: question-bang-methods
+
+  block-methods:
+    - match: (?:each|times|map)\b(?![!?])
+      scope: meta.function.identifier.ruby variable.function.ruby
+      # push: blocks-with-params
+
+  question-bang-methods:
+    - match: \b{{vars}}\b[!?]
+      scope: variable.function.ruby
+
+###[ VARIABLES ]###############################################################
+
+  variables:
+    # dragonruby `args.state` variables. assumes they aren't reassigned
+    - match: (\$?(?:args\.)?state\.){{vars}}\b([!?]*)
+      scope: variable.other.readwrite.dragonruby
+      captures:
+        1: punctuation.definition.variable.dragonruby
+        2: invalid.illegal.dragonruby
+    # scoped variables (instance, global, class)
+    - match: \b([@$]|@@){{vars}}\b([!?]*)
+      scope: variable.other.readwrite.ruby
+      captures:
+        1: punctuation.definition.variable.ruby
+        2: invalid.illegal.ruby
+    # assume anything that is being assigned a value is a variable
+    - match: \b{{vars}}\b([!?]*)(?=\s*(?:<<|&&|\|\||\*\*|[-+*&|^])?=)
+      scope: variable.other.readwrite.ruby
+      captures:
+        1: invalid.illegal.ruby
+
+###[ ILLEGALS ]################################################################
+  # for things that show up where they shouldn't
+
+  illegals:
+    - include: illegal-keywords
+    - include: illegal-punctuation
+
+  illegal-keywords:
+    - match: '\b(?:elsif|else|then|end|do|rescue|ensure)\b(?![!?])'
+      scope: invalid.illegal.ruby
+
+  illegal-punctuation:
+    - match: '[:,})]'
+      scope: invalid.illegal.ruby
+
+###[ OPERATORS ]###############################################################
+
+  operators:
+    # ranges
+    - match: \.\.\.?
+      scope: keyword.operator.range.ruby
+    # arithmetic
+    - match: \*\*|[-+*/%]
+      scope: keyword.operator.arithmetic.ruby
+    # logical
+    - match: '!+|&&|\|\||(?:\b(?:and|or|not)\b(?![!?]))'
+      scope: keyword.operator.logical.ruby
+    # bitwise
+    - match: <<|>>|\||&|^|~
+      scope: keyword.operator.bitwise.ruby
+    # comparison
+    - match: <=>|===|<=|>=|==|=~|!=|!~|<|>
+      scope: keyword.operator.comparison.ruby
+    # assignment
+    - match: =
+      scope: keyword.operator.assignment.ruby
+    # augmented assignment
+    - match: <<=|&&=|\|\|=|\*\*=|[-+*&|^]=
+      scope: keyword.operator.assignment.augmented.ruby
+    # ternary (demolishes symbols recognition atm)
+    - match: \?(?![?!])
+      scope: keyword.operator.ternary.ruby
+      push:
+        - match: ':'
+          scope: keyword.operator.ternary.ruby
+          pop: true
+        - include: expressions
+
+###[ KEYWORDS ]################################################################
+
+  # keywords:
+  #   - include:
+
+###[ PARAMETERS ]##############################################################
+
+  # method_params:
+  #   - match: (()?**list of params goes here**())
+  block-parameters:
+    - match: \|
+      scope: punctuation.section.group.begin.ruby
+      push:
+        - meta_scope: meta.block.parameters.ruby
+        - match: \|
+          scope: punctuation.section.group.end.ruby
+          pop: true
+        - include: parameters
+
+  brace-blocks:
+    - match: \{
+      scope: punctuation.section.block.begin.ruby
+      push:
+        - meta_scope: meta.block.ruby
+        - match: \}
+          scope: punctuation.section.block.end.ruby
+          pop: true
+        - include: expressions
+
+###[ BLOCKS ]##################################################################
+
+  # block-begin:
+  #   - match: \bbegin\b(?![!?])
+  #     scope: keyword.control.exception.try.ruby
+
+  block-do:
+    - match: \bdo\b(?![!?])
+      scope: keyword.control.block.do.ruby
+      set:
+        - meta_scope: meta.block.ruby
+        - match: (?=\bend\b(?![!?]))
+          push: block-end
+        - include: expressions
+
+  block-body:
+    - meta_scope: meta.block.ruby
+    - include: block-end
+
+  block-end:
+    - match: \bend\b(?![!?])
+      scope: keyword.control.block.end.ruby
+      pop: 2 # pop out of [ block-do -> loops ]
+
+###[ LOOPS ]###################################################################
+
+  loops:
+    # while loops
+    - match: \bwhile|until\b(?![!?])
+      scope: keyword.control.loop.while.ruby
+      set:
+        - match: (?=\bdo\b(?![!?]))
+          set: block-do
+        - match: '\n'
+          set: block-body
+        - include: expressions
+
+###[ CONDITIONALS ]############################################################
+
+  conditionals:
+    # ifs
+    # TODO: check if used as oneliners
+    - match: \bif\b(?![!?])
+      scope: keyword.control.conditional.if.ruby
+      push:
+        - match: \bthen\b(?![!?])
+          scope: keyword.control.conditional.then.ruby
+        - match: \belsif\b(?![!?])
+          scope: keyword.control.conditional.elseif.ruby
+        - match: \belse\b(?![!?])
+          scope: keyword.control.conditional.else.ruby
+        - include: block-end
+        - include: expressions
+    # unless (same as if but can't have elsifs)
+    - match: \bunless\b(?![!?])
+      scope: keyword.control.conditional.if.ruby
+      push:
+        - match: \bthen\b(?![!?])
+          scope: keyword.control.conditional.then.ruby
+        - match: \belse\b(?![!?])
+          scope: keyword.control.conditional.else.ruby
+        - include: block-end
+        - include: expressions
+    # cases
+    - match: \bcase\b(?![!?])
+      scope: keyword.control.conditional.switch.ruby
+      push:
+        - match: \bwhen\b(?![!?])
+          scope: keyword.control.conditional.case.ruby
+        - match: \bthen\b(?![!?])
+          scope: keyword.control.conditional.then.ruby
+        - match: \belse\b(?![!?])
+          scope: keyword.control.conditional.else.ruby
+        - include: block-end
+        - include: expressions
+
+  # conditional-then:
+
+  # conditional-else:
+
+###[ LAMBDAS ]#################################################################
+
+  # lambdas:
+  #   - match: ->
+  #     scope: keyword.declaration.function.anonymous.ruby
+  #     push:
+  #       - meta_scope: meta.function.identifier.ruby
+  #       # - match:
+  #       - match: (?=do(?![!?])|{)
+  #         set:
+  #           - include: block-do
+  #           - include: block-braces
+
+###[ HASHES ]##################################################################
+  # currently only checks for { key: val } syntax and quoted variants
+  # recognizes any {} block as hash because regular blocks aren't scoped yet
+  # sequence of regex: find key -> find : -> find value -> find , or } -> repeat if ,
+
+  hashes:
+    - match: \{
+      scope: punctuation.section.mapping.begin.ruby
+      push:
+        - meta_scope: meta.mapping.ruby
+        - include: hash-end # pop out if empty
+        - include: comments
+        - match: (?=[a-zA-Z_'"])
+          set: hash-key
+        - match: \S
+          scope: invalid.illegal.ruby
+
+  hash-key:
+    # single-quoted syms
+    - match: \'
+      scope: punctuation.definition.constant.ruby
+      push:
+        - meta_scope: meta.mapping.key.ruby meta.symbol.ruby constant.other.symbol.ruby
+        - match: (\')([^:]*)
+          captures:
+            1: punctuation.definition.constant.ruby
+            2: invalid.illegal.ruby
+          push:
+            - match: ''
+              pop: 2 # pop previous meta_scopes
+              set: hash-colon
+        - include: single-quoted-escapes
+    # double-quoted syms
+    - match: \"
+      scope: punctuation.definition.constant.ruby
+      push:
+        - meta_scope: meta.mapping.key.ruby meta.symbol.ruby constant.other.symbol.ruby
+        - match: (\")([^:]*)
+          captures:
+            1: punctuation.definition.constant.ruby
+            2: invalid.illegal.ruby
+          push:
+            - match: ''
+              pop: 2 # pop previous meta_scopes
+              set: hash-colon
+        - include: double-quoted-escapes
+        - include: interpolated
+    # regular syms
+    - match: '({{vars}}[!?]?)([^:]*)'
+      captures:
+        1: meta.symbol.ruby constant.other.symbol.ruby
+        2: invalid.illegal.ruby
+      push:
+        - meta_scope: meta.mapping.key.ruby
+        - match: ''
+          set: hash-colon
+
+  hash-colon:
+    - match: ':'
+      scope: punctuation.separator.key-value.ruby
+      push:
+        - meta_scope: meta.mapping.ruby
+        - match: '\s*'
+        - match: ',|}'
+          scope: invalid.illegal.ruby
+        - match: ''
+          set: hash-value
+
+  hash-value:
+    - meta_scope: meta.mapping.value.ruby
+    - match: (?=,)
+      set: hash-comma
+    - match: (?=})
+      set:
+        - meta_scope: meta.mapping.ruby
+        - include: hash-end
+    - include: expressions
+
+  hash-comma:
+    - match: ','
+      scope: punctuation.separator.sequence.ruby
+      push:
+        - meta_scope: meta.mapping.ruby
+        - include: hash-end
+        - match: ','
+          scope: invalid.illegal.ruby
+        - match: (?=[a-zA-Z_'"])
+          # pop out of [comma -> value -> colon -> key -> hash]
+          # to future me: no i don't know why it needs 5 instead of 4
+          # but it works this way so don't touch it
+          pop: 5
+          set: hash-key
+
+  hash-end:
+    # if called from comma(the deepest stack it could be called from)
+    # pop out of [comma -> value -> colon -> key -> hash]
+    # seems to behave fine when called from a higher stack
+    - match: \}
+      scope: punctuation.section.mapping.end.ruby
+      pop: 5
+
+###[ ARRAYS ]##################################################################
+  # incomplete but gets the job done for the most part
+
+  arrays:
+    - match: \[
+      scope: punctuation.section.sequence.begin.ruby
+      push:
+        - meta_scope: meta.sequence.array.ruby
+        - match: \]
+          scope: punctuation.section.sequence.end.ruby
+          pop: true
+        - match: \,
+          scope: punctuation.separator.sequence.ruby
+        - include: expressions
+
+###[ ESCAPES AND INTERPOLATION ]###############################################
+
+  single-quoted-escapes:
+    - match: \\[\\']
+      scope: constant.character.escape.ruby
+
+  # incomplete
+  double-quoted-escapes:
+    - match: \\[\\"abtnvfres]
+      scope: constant.character.escape.ruby
+
+  interpolated:
+    # interpolated variable shorthand
+    - match: (#(?:[$@]|@@)){{vars}}
+      scope: meta.interpolation.ruby variable.other.readwrite.ruby
+      captures:
+        1: punctuation.definition.variable.ruby
+      push:
+        - clear_scopes: 1
+        - match: (?!{{vars}})
+          pop: true
+    # regular interpolation
+    - match: \#{
+      scope: punctuation.section.interpolation.begin.ruby
+      push:
+        - clear_scopes: 1
+        - meta_scope: meta.interpolation.ruby
+        - match: \}
+          scope: punctuation.section.interpolation.end.ruby
+          pop: true
+        - include: expressions
+
+###[ SYMBOLS ]#################################################################
+
+  symbols:
+    # single-quoted syms
+    - match: :'
+      scope: punctuation.definition.symbol.ruby
+      push:
+        - meta_scope: meta.symbol.ruby constant.other.symbol.ruby
+        - match: \'
+          scope: punctuation.definition.symbol.ruby
+          pop: true
+        - include: single-quoted-escapes
+    # double-quoted syms
+    - match: :"
+      scope: punctuation.definition.symbol.ruby
+      push:
+        - meta_scope: meta.symbol.ruby constant.other.symbol.ruby
+        - match: \"
+          scope: punctuation.definition.symbol.ruby
+          pop: true
+        - include: double-quoted-escapes
+        - include: interpolated
+    # regular syms
+    # does not cover all valid symbols (there's a lot apparently)
+    - match: (:)(?:[$@]|@@)?{{vars}}
+      scope: meta.symbol.ruby constant.other.symbol.ruby
+      captures:
+        1: punctuation.definition.symbol.ruby
+
+###[ STRINGS ]#################################################################
+
+  strings:
+    # single quotes
+    - match: \'
+      scope: punctuation.definition.string.begin.ruby
+      push:
+        - meta_scope: meta.string.ruby string.quoted.single.ruby
+        - match: \'
+          scope: punctuation.definition.string.end.ruby
+          pop: true
+        - include: single-quoted-escapes
+    # double quotes
+    - match: \"
+      scope: punctuation.definition.string.begin.ruby
+      push:
+        - meta_scope: meta.string.ruby string.quoted.double.ruby
+        - match: \"
+          scope: punctuation.definition.string.end.ruby
+          pop: true
+        - include: double-quoted-escapes
+        - include: interpolated
+    # backtick method
+    - match: \`
+      scope: punctuation.definition.string.begin.ruby
+      push:
+        - meta_scope: meta.string.ruby string.other.ruby
+        - match: \`
+          scope: punctuation.definition.string.end.ruby
+          pop: true
+        - include: double-quoted-escapes
+        - include: interpolated
+
+###[ DECIMALS ]################################################################
+
+  decimals:
+    # floats
+    - match: \b{{decs}}(\w*)(?:(?:(\.){{decs}})?[eE][+-]?(\w*){{decs}}|(\.){{decs}})(\w*)\b
+      scope: meta.number.float.decimal.ruby constant.numeric.value.ruby
+      captures:
+        1: invalid.illegal.ruby
+        2: punctuation.separator.decimal.ruby
+        3: invalid.illegal.ruby
+        4: punctuation.separator.decimal.ruby
+        5: invalid.illegal.ruby
+    # ints
+    - match: \b(0[dD])?({{decs}}(\w*))\b
+      scope: meta.number.integer.decimal.ruby
+      captures:
+        1: constant.numeric.base.ruby
+        2: constant.numeric.value.ruby
+        3: invalid.illegal.ruby
+
+###[ BOOLS AND NIL ]###########################################################
+
+  bools-and-nil:
+    - match: \b(?:true|false)\b(?![?!])
+      scope: constant.language.boolean.ruby
+    - match: \bnil\b(?![?!])
+      scope: constant.language.null.ruby
+
+###[ COMMENTS ]################################################################
+
+  comments:
+    # inline
+    - match: (\#+).*
+      scope: comment.line.number-sign.ruby
+      captures:
+        1: punctuation.definition.comment.ruby
+      # push: yardoc
+    # block
+    - match: ^=begin
+      scope: punctuation.definition.comment.begin.ruby
+      push:
+        - meta_scope: comment.block.ruby
+        - match: ^=end
+          scope: punctuation.definition.comment.end.ruby
+          pop: true
+
+  # yardoc:
+  #   - match: '@'
+
+###############################################################################
+###############################################################################
+###############################################################################
+###############################################################################
+###############################################################################
+###############################################################################
+
